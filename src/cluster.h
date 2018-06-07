@@ -133,6 +133,7 @@ typedef struct clusterNode {
     list *fail_reports;         /* List of nodes signaling this as failing */
 } clusterNode;
 
+// zhou: cluster mode server specific information
 typedef struct clusterState {
     clusterNode *myself;  /* This node */
     uint64_t currentEpoch;
@@ -142,6 +143,7 @@ typedef struct clusterState {
     dict *nodes_black_list; /* Nodes we don't re-add for a few seconds. */
     clusterNode *migrating_slots_to[CLUSTER_SLOTS];
     clusterNode *importing_slots_from[CLUSTER_SLOTS];
+
     clusterNode *slots[CLUSTER_SLOTS];
     uint64_t slots_keys_count[CLUSTER_SLOTS];
     rax *slots_to_keys;
@@ -166,6 +168,7 @@ typedef struct clusterState {
     /* The followign fields are used by masters to take state on elections. */
     uint64_t lastVoteEpoch;     /* Epoch of the last vote granted. */
     int todo_before_sleep; /* Things to do in clusterBeforeSleep(). */
+
     /* Messages received and sent by type. */
     long long stats_bus_messages_sent[CLUSTERMSG_TYPE_COUNT];
     long long stats_bus_messages_received[CLUSTERMSG_TYPE_COUNT];
@@ -175,6 +178,7 @@ typedef struct clusterState {
 
 /* Redis cluster messages header */
 
+// zhou:
 /* Initially we don't know our "name", but we'll find it once we connect
  * to the first node, using the getsockname() function. Then we'll use this
  * address for all the next messages. */

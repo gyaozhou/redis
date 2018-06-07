@@ -903,6 +903,7 @@ struct clusterState;
 #define CHILD_INFO_TYPE_RDB 0
 #define CHILD_INFO_TYPE_AOF 1
 
+// zhou: core data for each node
 struct redisServer {
     /* General */
     pid_t pid;                  /* Main process pid. */
@@ -1192,7 +1193,10 @@ struct redisServer {
     int cluster_enabled;      /* Is cluster enabled? */
     mstime_t cluster_node_timeout; /* Cluster node timeout. */
     char *cluster_configfile; /* Cluster auto-generated config file name. */
+
+    // zhou: allocated only in case of Cluster Mode
     struct clusterState *cluster;  /* State of the cluster */
+
     int cluster_migration_barrier; /* Cluster replicas migration barrier. */
     int cluster_slave_validity_factor; /* Slave max data age for failover. */
     int cluster_require_full_coverage; /* If true, put the cluster down if

@@ -2032,7 +2032,9 @@ void initServer(void) {
         server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
     }
 
+    // zhou: Cluster Mode enabled
     if (server.cluster_enabled) clusterInit();
+
     replicationScriptCacheInit();
     scriptingInit(1);
     slowlogInit();

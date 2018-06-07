@@ -426,6 +426,7 @@ void clusterUpdateMyselfFlags(void) {
     }
 }
 
+// zhou: running in Cluster Mode
 void clusterInit(void) {
     int saveconf = 0;
 
@@ -444,10 +445,12 @@ void clusterInit(void) {
     server.cluster->failover_auth_epoch = 0;
     server.cluster->cant_failover_reason = CLUSTER_CANT_FAILOVER_NONE;
     server.cluster->lastVoteEpoch = 0;
+
     for (int i = 0; i < CLUSTERMSG_TYPE_COUNT; i++) {
         server.cluster->stats_bus_messages_sent[i] = 0;
         server.cluster->stats_bus_messages_received[i] = 0;
     }
+
     server.cluster->stats_pfail_nodes = 0;
     memset(server.cluster->slots,0, sizeof(server.cluster->slots));
     clusterCloseAllSlots();
@@ -463,6 +466,7 @@ void clusterInit(void) {
          * by the createClusterNode() function. */
         myself = server.cluster->myself =
             createClusterNode(NULL,CLUSTER_NODE_MYSELF|CLUSTER_NODE_MASTER);
+
         serverLog(LL_NOTICE,"No cluster configuration found, I'm %.40s",
             myself->name);
         clusterAddNode(myself);
@@ -485,6 +489,7 @@ void clusterInit(void) {
         exit(1);
     }
 
+    // zhou: CLUSTER_PORT_INCR 1000 offset
     if (listenToPort(server.port+CLUSTER_PORT_INCR,
         server.cfd,&server.cfd_count) == C_ERR)
     {
@@ -1315,10 +1320,15 @@ int clusterStartHandshake(char *ip, int port, int cport) {
             (void*)&(((struct sockaddr_in6 *)&sa)->sin6_addr),
             norm_ip,NET_IP_STR_LEN);
 
+    // zhou: check progress state since it's possible client send "client meet" two times
+    //       in short time.
     if (clusterHandshakeInProgress(norm_ip,port,cport)) {
         errno = EAGAIN;
         return 0;
     }
+
+    // zhou: add a temporary name for this node, and wait for pong from it.
+    //       clusterCron() will check state and decide sending messages to which nodes.
 
     /* Add the node with a random address (NULL as first argument to
      * createClusterNode()). Everything will be fixed during the
@@ -1330,6 +1340,8 @@ int clusterStartHandshake(char *ip, int port, int cport) {
     clusterAddNode(n);
     return 1;
 }
+
+// zhou: handle Gossip information.
 
 /* Process the gossip section of PING or PONG packets.
  * Note that this function assumes that the packet is already sanity-checked
@@ -1358,6 +1370,7 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
 
         /* Update our state accordingly to the gossip sections */
         node = clusterLookupNode(g->nodename);
+
         if (node) {
             /* We already know this node.
                Handle failure reports, only when the sender is a master. */
@@ -1377,6 +1390,8 @@ void clusterProcessGossipSection(clusterMsg *hdr, clusterLink *link) {
                     }
                 }
             }
+
+            // zhou:
 
             /* If from our POV the node is up (no failure flags are set),
              * we have no pending ping for the node, nor we have failure
@@ -1617,6 +1632,8 @@ void clusterUpdateSlotsConfigWith(clusterNode *sender, uint64_t senderConfigEpoc
     }
 }
 
+// zhou: handle messages from nodes within/out of cluster
+
 /* When this function is called, there is a packet to process starting
  * at node->rcvbuf. Releasing the buffer is up to the caller, so this
  * function should just handle the higher level stuff of processing the
@@ -1658,11 +1675,13 @@ int clusterProcessPacket(clusterLink *link) {
         explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
         explen += (sizeof(clusterMsgDataGossip)*count);
         if (totlen != explen) return 1;
+
     } else if (type == CLUSTERMSG_TYPE_FAIL) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
         explen += sizeof(clusterMsgDataFail);
         if (totlen != explen) return 1;
+
     } else if (type == CLUSTERMSG_TYPE_PUBLISH) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
@@ -1671,6 +1690,7 @@ int clusterProcessPacket(clusterLink *link) {
                 ntohl(hdr->data.publish.msg.channel_len) +
                 ntohl(hdr->data.publish.msg.message_len);
         if (totlen != explen) return 1;
+
     } else if (type == CLUSTERMSG_TYPE_FAILOVER_AUTH_REQUEST ||
                type == CLUSTERMSG_TYPE_FAILOVER_AUTH_ACK ||
                type == CLUSTERMSG_TYPE_MFSTART)
@@ -1678,21 +1698,25 @@ int clusterProcessPacket(clusterLink *link) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
         if (totlen != explen) return 1;
+
     } else if (type == CLUSTERMSG_TYPE_UPDATE) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
         explen += sizeof(clusterMsgDataUpdate);
         if (totlen != explen) return 1;
+
     } else if (type == CLUSTERMSG_TYPE_MODULE) {
         uint32_t explen = sizeof(clusterMsg)-sizeof(union clusterMsgData);
 
         explen += sizeof(clusterMsgDataPublish) -
                 3 + ntohl(hdr->data.module.msg.len);
         if (totlen != explen) return 1;
+
     }
 
     /* Check if the sender is a known node. */
     sender = clusterLookupNode(hdr->sender);
+
     if (sender && !nodeInHandshake(sender)) {
         /* Update our curretEpoch if we see a newer epoch in the cluster. */
         senderCurrentEpoch = ntohu64(hdr->currentEpoch);
@@ -1766,6 +1790,7 @@ int clusterProcessPacket(clusterLink *link) {
             node->port = ntohs(hdr->port);
             node->cport = ntohs(hdr->cport);
             clusterAddNode(node);
+
             clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG);
         }
 
@@ -1991,6 +2016,7 @@ int clusterProcessPacket(clusterLink *link) {
 
         /* Get info from the gossip section */
         if (sender) clusterProcessGossipSection(hdr,link);
+
     } else if (type == CLUSTERMSG_TYPE_FAIL) {
         clusterNode *failing;
 
@@ -2205,6 +2231,7 @@ void clusterSendMessage(clusterLink *link, unsigned char *msg, size_t msglen) {
         aeCreateFileEvent(server.el,link->fd,AE_WRITABLE|AE_BARRIER,
                     clusterWriteHandler,link);
 
+    // zhou: memcpy to link local buffer
     link->sndbuf = sdscatlen(link->sndbuf, msg, msglen);
 
     /* Populate sent messages stats. */
@@ -2339,6 +2366,8 @@ void clusterSetGossipEntry(clusterMsg *hdr, int i, clusterNode *n) {
     gossip->notused1 = 0;
 }
 
+// zhou: CLUSTERMSG_TYPE_MEET is special CLUSTERMSG_TYPE_PING
+
 /* Send a PING or PONG packet to the specified node, making sure to add enough
  * gossip informations. */
 void clusterSendPing(clusterLink *link, int type) {
@@ -2347,6 +2376,7 @@ void clusterSendPing(clusterLink *link, int type) {
     int gossipcount = 0; /* Number of gossip sections added so far. */
     int wanted; /* Number of gossip sections we want to append if possible. */
     int totlen; /* Total packet length. */
+
     /* freshnodes is the max number of nodes we can hope to append at all:
      * nodes available minus two (ourself and the node we are sending the
      * message to). However practically there may be less valid nodes since
@@ -2406,6 +2436,9 @@ void clusterSendPing(clusterLink *link, int type) {
     /* Populate the gossip fields */
     int maxiterations = wanted*3;
     while(freshnodes > 0 && gossipcount < wanted && maxiterations--) {
+        // zhou: randomly pick up part of local Facts and sending.
+        //       Once it's not lucy enough, always some Facts can't be sent out,
+        //       what will happen?
         dictEntry *de = dictGetRandomKey(server.cluster->nodes);
         clusterNode *this = dictGetVal(de);
 
@@ -2428,6 +2461,7 @@ void clusterSendPing(clusterLink *link, int type) {
             continue;
         }
 
+        // zhou: when it will happen?
         /* Do not add a node we already have. */
         if (clusterNodeIsInGossipSection(hdr,gossipcount,this)) continue;
 
@@ -2437,6 +2471,7 @@ void clusterSendPing(clusterLink *link, int type) {
         gossipcount++;
     }
 
+    // zhou: make sure PFAIL nodes be gossipled as soon as possible.
     /* If there are PFAIL nodes, add them at the end. */
     if (pfail_wanted) {
         dictIterator *di;
@@ -2465,6 +2500,8 @@ void clusterSendPing(clusterLink *link, int type) {
     totlen += (sizeof(clusterMsgDataGossip)*gossipcount);
     hdr->count = htons(gossipcount);
     hdr->totlen = htonl(totlen);
+
+    // zhou: buf will be copied to link local buffer, so it's safe to free.
     clusterSendMessage(link,buf,totlen);
     zfree(buf);
 }
@@ -3293,6 +3330,8 @@ void clusterHandleManualFailover(void) {
     }
 }
 
+
+// zhou: just like polling, but much low frequency to avoid take too much resource.
 /* -----------------------------------------------------------------------------
  * CLUSTER cron job
  * -------------------------------------------------------------------------- */
@@ -3436,6 +3475,7 @@ void clusterCron(void) {
             if (this->link == NULL || this->ping_sent != 0) continue;
             if (this->flags & (CLUSTER_NODE_MYSELF|CLUSTER_NODE_HANDSHAKE))
                 continue;
+
             if (min_pong_node == NULL || min_pong > this->pong_received) {
                 min_pong_node = this;
                 min_pong = this->pong_received;
@@ -4170,6 +4210,7 @@ void clusterReplyMultiBulkSlots(client *c) {
     setDeferredMultiBulkLength(c, slot_replylen, num_masters);
 }
 
+// zhou: handler of client sending command "cluster xxxx"
 void clusterCommand(client *c) {
     if (server.cluster_enabled == 0) {
         addReplyError(c,"This instance has cluster support disabled");
@@ -4229,6 +4270,7 @@ NULL
             addReplyErrorFormat(c,"Invalid node address specified: %s:%s",
                             (char*)c->argv[2]->ptr, (char*)c->argv[3]->ptr);
         } else {
+            // zhou: reply client that the command executed or executing.
             addReply(c,shared.ok);
         }
     } else if (!strcasecmp(c->argv[1]->ptr,"nodes") && c->argc == 2) {
