@@ -2057,6 +2057,7 @@ static int updateReplBacklogSize(long long val, long long prev, char **err) {
     return 1;
 }
 
+// zhou:
 static int updateMaxmemory(long long val, long long prev, char **err) {
     UNUSED(prev);
     UNUSED(err);

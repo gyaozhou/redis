@@ -605,6 +605,8 @@ void dictReleaseIterator(dictIterator *iter)
     zfree(iter);
 }
 
+// zhou: use random to perform LRU or others.
+
 /* Return a random entry from the hash table. Useful to
  * implement randomized algorithms */
 dictEntry *dictGetRandomKey(dict *d)

@@ -434,6 +434,8 @@ int getMaxmemoryState(size_t *total, size_t *logical, size_t *tofree, float *lev
     return C_ERR;
 }
 
+// zhou:
+
 /* This function is periodically called to see if there is memory to free
  * according to the current "maxmemory" settings. In case we are over the
  * memory limit, the function will try to free some memory to return back
@@ -620,6 +622,8 @@ cant_free:
     }
     return C_ERR;
 }
+
+// zhou:
 
 /* This is a wrapper for freeMemoryIfNeeded() that only really calls the
  * function if right now there are the conditions to do so safely:

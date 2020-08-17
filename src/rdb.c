@@ -1340,6 +1340,7 @@ werr:
     return C_ERR;
 }
 
+// zhou: fork() to start RDB file writing.
 int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
     pid_t childpid;
 
@@ -1352,6 +1353,7 @@ int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
     if ((childpid = redisFork()) == 0) {
         int retval;
 
+        // zhou: write data in memory to file.
         /* Child */
         redisSetProcTitle("redis-rdb-bgsave");
         retval = rdbSave(filename,rsi);
@@ -1360,6 +1362,7 @@ int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
         }
         exitFromChild((retval == C_OK) ? 0 : 1);
     } else {
+        // zhou: parent continues work.
         /* Parent */
         if (childpid == -1) {
             closeChildInfoPipe();
